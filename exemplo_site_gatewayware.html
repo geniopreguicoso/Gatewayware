@@ -1,0 +1,140 @@
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GatewayWare - Comunicação Entre Abas</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+        #peers {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>GatewayWare - Comunicação Entre Abas</h1>
+    <button onclick="syncLocalStorage()">Sincronizar LocalStorage</button>
+    <button onclick="sendFile()">Enviar Arquivo</button>
+    <button onclick="shutdownGateway()">Encerrar Gateway</button>
+    <h2>Peers Conectados:</h2>
+    <ul id="peers"></ul>
+
+    <script>
+        class GatewayWare {
+            constructor() {
+                this.peers = new Map();
+                this.gatewayActive = false;
+                this.securityHash = this.generateSecurityHash();
+                this.eventListeners = new Map();
+                this.filesShared = new Map();
+                this.connectionTimeout = 5000;
+                this.initGateway();
+            }
+
+            generateSecurityHash() {
+                return btoa(Math.random().toString(36).substr(2, 10));
+            }
+
+            initGateway() {
+                if (window.GatewayWareActive) return;
+                window.GatewayWareActive = true;
+                this.gatewayActive = true;
+                this.setupConnection();
+                this.setupHeartbeat();
+            }
+
+            setupConnection() {
+                window.addEventListener("message", (event) => {
+                    if (event.origin !== window.location.origin) return;
+                    switch (event.data.type) {
+                        case "GATEWAY_CONNECT":
+                            this.handleNewConnection(event.source, event.data.id);
+                            break;
+                        case "GATEWAY_LOCAL_STORAGE":
+                            this.receiveLocalStorage(event.data.data);
+                            break;
+                        case "GATEWAY_FILE_TRANSFER":
+                            this.receiveFiles(event.data.data);
+                            break;
+                    }
+                });
+            }
+
+            setupHeartbeat() {
+                setInterval(() => {
+                    this.peers.forEach((peer, id) => {
+                        peer.postMessage({ type: "GATEWAY_HEARTBEAT", id }, "*");
+                    });
+                }, this.connectionTimeout);
+            }
+
+            handleNewConnection(source, id) {
+                if (!this.peers.has(id)) {
+                    this.peers.set(id, source);
+                    this.updatePeerList();
+                }
+            }
+
+            exchangeLocalStorage(peer, id) {
+                const data = JSON.stringify(localStorage);
+                peer.postMessage({ type: "GATEWAY_LOCAL_STORAGE", data, id }, "*");
+            }
+
+            receiveLocalStorage(data) {
+                try {
+                    const parsedData = JSON.parse(data);
+                    for (const key in parsedData) {
+                        localStorage.setItem(key, parsedData[key]);
+                    }
+                    alert("LocalStorage sincronizado!");
+                } catch (e) {
+                    console.error("Erro ao processar LocalStorage recebido:", e);
+                }
+            }
+
+            exchangeFiles(peer, id) {
+                const files = [{ name: "exemplo.txt", content: "Arquivo compartilhado" }];
+                peer.postMessage({ type: "GATEWAY_FILE_TRANSFER", data: files, id }, "*");
+            }
+
+            receiveFiles(data) {
+                alert("Arquivo recebido!");
+            }
+
+            updatePeerList() {
+                const peerList = document.getElementById("peers");
+                peerList.innerHTML = "";
+                this.peers.forEach((_, id) => {
+                    const li = document.createElement("li");
+                    li.textContent = `Peer ID: ${id}`;
+                    peerList.appendChild(li);
+                });
+            }
+        }
+
+        const gateway = new GatewayWare();
+
+        function syncLocalStorage() {
+            gateway.peers.forEach((peer, id) => {
+                gateway.exchangeLocalStorage(peer, id);
+            });
+        }
+
+        function sendFile() {
+            gateway.peers.forEach((peer, id) => {
+                gateway.exchangeFiles(peer, id);
+            });
+        }
+
+        function shutdownGateway() {
+            gateway.peers.forEach((peer, id) => {
+                peer.postMessage({ type: "GATEWAY_SHUTDOWN", message: "Gateway encerrado" }, "*");
+            });
+            alert("Gateway encerrado.");
+        }
+    </script>
+</body>
+</html>
